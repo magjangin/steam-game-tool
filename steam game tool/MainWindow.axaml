@@ -58,7 +58,7 @@
                                 <Separator/>
                                 <MenuItem x:Name="MelonReplaceCheck" Header="다른 버전이 설치된 게임도 교체"
                                           ToggleType="CheckBox" IsChecked="True" StaysOpenOnClick="True"
-                                          ToolTip.Tip="기본으로 켜져 있습니다(사용자 요청, 2026-09-21). 끄면 MelonLoader 가 있는 게임은 건너뜁니다. 켜면 버전이 규칙(직접 고른 zip 이면 그 zip)과 다른 게임의 version.dll·dobby.dll·NOTICE.txt·MelonLoader 폴더를 바꿉니다. Mods·UserData 등은 그대로 둡니다."/>
+                                          ToolTip.Tip="기본으로 켜져 있습니다. 끄면 MelonLoader 가 있는 게임은 건너뜁니다. 켜면 버전이 규칙(직접 고른 zip 이면 그 zip)과 다른 게임의 version.dll·dobby.dll·NOTICE.txt·MelonLoader 폴더를 바꿉니다. Mods·UserData 등은 그대로 둡니다."/>
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>

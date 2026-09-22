@@ -13,7 +13,19 @@ namespace steam_game_tool;
 /// </summary>
 public static class SteamLibraries
 {
-    /// <summary>레지스트리/기본 경로에서 Steam 설치 폴더를 찾는다.</summary>
+    /// <summary>
+    /// 스캔 폴더 입력란의 글을 경로 목록으로 나눈다. 구분자는 세미콜론과 줄 바꿈뿐이다.
+    /// 쉼표로는 나누지 않는다 — Windows 경로에는 쉼표가 들어갈 수 있다("D:\Games, Old\steamapps\common").
+    /// 앞뒤 공백과 따옴표를 떼고, 대소문자만 다른 중복은 뺀다. 존재 여부는 확인하지 않는다.
+    /// </summary>
+    public static List<string> SplitRootList(string? text) =>
+        (text ?? "").Split([';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim().Trim('"').Trim())
+            .Where(p => p.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>레지스트리에서 Steam 설치 폴더를 찾는다. 가리키는 폴더가 없으면 다음 후보로 넘어간다.</summary>
     public static string? FindSteamPath()
     {
         foreach (var (hive, sub, val) in new[]

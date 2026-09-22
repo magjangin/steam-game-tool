@@ -34,6 +34,24 @@ namespace steam_game_tool
 
         private async void OnScanClick(object? sender, RoutedEventArgs e)
         {
+            // 입력된 폴더가 있으면 그것들(세미콜론·줄 바꿈으로 구분), 비어 있으면 자동 감지.
+            // 입력한 폴더가 하나도 없으면 자동 감지로 넘어가지 않는다. 한 폴더만 보려던 사람에게 전체 결과를 주지 않기 위해서다.
+            var typed = SteamLibraries.SplitRootList(RootBox.Text);
+            List<string>? roots = null;
+            var missingRoots = new List<string>();
+            if (typed.Count > 0)
+            {
+                var existing = typed.Where(Directory.Exists).ToList();
+                missingRoots = typed.Except(existing).ToList();
+                roots = existing;
+                if (existing.Count == 0)
+                {
+                    StatusText.Text = "입력한 폴더가 없습니다: " + string.Join("  |  ", missingRoots) +
+                                      " — 자동 감지로 스캔하려면 입력란을 비우거나 「폴더 ▸ 자동 감지」를 누르세요.";
+                    return;
+                }
+            }
+
             ScanButton.IsEnabled = false;
             Spinner.IsVisible = true;
             SummaryText.Text = "스캔 중...";
@@ -41,31 +59,26 @@ namespace steam_game_tool
             _view.Clear();
             UpdateSelectAll();
 
-            // 입력된 폴더가 있으면 그것들(세미콜론 등으로 구분), 없으면 자동 감지.
-            var typed = RootBox.Text?.Trim();
-            List<string>? roots = null;
-            if (!string.IsNullOrEmpty(typed))
-            {
-                roots = typed.Split(new[] { ';', ',', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                             .Where(Directory.Exists)
-                             .Distinct(StringComparer.OrdinalIgnoreCase)
-                             .ToList();
-                if (roots.Count == 0) roots = null;
-            }
-
+            var previous = _last;
+            // 진행 메시지가 완료 메시지보다 늦게 처리될 수 있다. 끝난 뒤 도착한 것은 버린다.
+            var scanning = true;
             try
             {
-                var result = await Task.Run(() => SteamScanner.Scan(roots, msg =>
-                    Dispatcher.UIThread.Post(() => StatusText.Text = msg)));
-
-                if (_last is not null && _last.Roots.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(result.Roots))
+                var (result, inventory) = await Task.Run(() =>
                 {
-                    ScanInventory.Compare(_last.Games.Select(g => g.InstallDir), result.Games.Select(g => g.InstallDir));
-                    ScanInventory.ValidateUnityRetention(SteamScanner.Filter(_last, Marker.Any).Select(g => g.InstallDir),
-                        SteamScanner.Filter(result, Marker.Any).Select(g => g.InstallDir));
-                }
-                GameClassification.Validate(result.Games);
-                ScanInventory.ValidatePersistent(result);
+                    var scanned = SteamScanner.Scan(roots, msg =>
+                        Dispatcher.UIThread.Post(() => { if (scanning) StatusText.Text = msg; }));
+                    // 대표 플레이어는 처음 읽을 때 계산된다(동률이면 데이터 폴더 크기를 전부 더함). 여기서 끝내 UI 스레드가 멈추지 않게 한다.
+                    GameClassification.Validate(scanned.Games);
+                    if (scanned.Roots.Count == 0) return (scanned, ScanInventory.InventoryCheck.None);
+
+                    var check = ScanInventory.CheckPersistent(scanned);
+                    if (previous is not null && previous.Roots.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(scanned.Roots))
+                        check = check.Merge(ScanInventory.Check(ScanInventory.BaselineOf(previous), ScanInventory.BaselineOf(scanned)));
+                    return (scanned, check);
+                });
+                scanning = false;
+
                 if (_last is not null)
                 {
                     // 설치 후 다시 스캔해도 사용자가 풀어 둔 체크는 그대로 둔다.
@@ -88,11 +101,12 @@ namespace steam_game_tool
                 else
                 {
                     SummaryText.Text = BuildSummary(result);
-                    StatusText.Text = BuildStatus(result);
+                    StatusText.Text = BuildStatus(result, inventory, missingRoots);
                 }
             }
             catch (Exception ex)
             {
+                scanning = false;
                 SummaryText.Text = "스캔 중 오류가 발생했습니다.";
                 StatusText.Text = ex.Message;
             }
@@ -104,14 +118,14 @@ namespace steam_game_tool
         }
 
         /// <summary>
-        /// 마커 집계 요약. 개수는 모두 "게임으로 볼 만한 것" 기준이며,
-        /// 사운드트랙·소프트웨어·도구는 세지 않는다.
+        /// 마커 집계 요약. 개수는 모두 집계 대상(<see cref="ScanResult.CountedGames"/>) 기준이며,
+        /// 사운드트랙·소프트웨어·도구는 세지 않는다. 앞의 전체 개수도 같은 기준이라야 뒤의 개수와 분모가 맞는다.
         /// </summary>
         private static string BuildSummary(ScanResult result)
         {
             var scope = result.HasTypeInfo
                 ? $"게임 {result.GameCount}개"
-                : $"폴더 {result.Games.Count}개";
+                : $"폴더 {result.GameCount}개";
 
             return $"{scope} — " +
                    $"Unity Mono {result.UnityMonoCount} · " +
@@ -122,24 +136,36 @@ namespace steam_game_tool
                    $"런타임 미확정 {result.CountedGames.Count(g => g.IsRuntimeUnresolved)} · 백엔드 미확정 {result.CountedGames.Count(g => g.IsBackendUnresolved)}";
         }
 
-        /// <summary>게임이 아닌 항목과 경고를 알리는 상태 줄.</summary>
-        private static string BuildStatus(ScanResult result)
+        /// <summary>
+        /// 이전 스캔 대비 누락, 게임이 아닌 항목, 경고를 알리는 상태 줄.
+        /// 「제외」의 개수와 요약 줄의 게임 수를 더하면 스캔한 폴더 수가 된다. 데모는 게임으로 세므로 「제외」에 넣지 않는다.
+        /// </summary>
+        private static string BuildStatus(ScanResult result, ScanInventory.InventoryCheck inventory,
+            IReadOnlyCollection<string> missingRoots)
         {
             var parts = new List<string>();
+
+            // 목록에서 사라진 게임을 가장 먼저 알린다. 폴더가 디스크에 남아 있는 동안 스캔할 때마다 다시 나온다.
+            if (inventory.LostUnity.Count > 0)
+                parts.Add($"⚠ 전에 Unity 로 분류됐는데 지금은 아닌 폴더 {inventory.LostUnity.Count}개: {Abbreviate(inventory.LostUnity)}" +
+                          " (게임을 지웠다면 남은 폴더를 지우면 사라집니다)");
+            if (inventory.MissingFolders.Count > 0)
+                parts.Add($"⚠ 디스크에는 있는데 이번 스캔에서 빠진 폴더 {inventory.MissingFolders.Count}개: {Abbreviate(inventory.MissingFolders)}");
+            if (missingRoots.Count > 0)
+                parts.Add("⚠ 입력한 폴더 중 없는 것은 건너뜀: " + string.Join("  |  ", missingRoots));
 
             if (result.HasTypeInfo)
             {
                 var others = new List<string>();
-                void Add(string label, SteamAppType type)
+                void Add(string label, int n)
                 {
-                    var n = result.CountOf(type);
                     if (n > 0) others.Add($"{label} {n}");
                 }
-                Add("사운드트랙", SteamAppType.Music);
-                Add("소프트웨어", SteamAppType.Application);
-                Add("도구", SteamAppType.Tool);
-                Add("영상", SteamAppType.Video);
-                Add("데모", SteamAppType.Demo);
+                Add("사운드트랙", result.CountOf(SteamAppType.Music));
+                Add("소프트웨어", result.CountOf(SteamAppType.Application));
+                Add("도구", result.CountOf(SteamAppType.Tool));
+                Add("영상", result.CountOf(SteamAppType.Video));
+                Add("기타", result.CountOf(SteamAppType.Config) + result.CountOf(SteamAppType.Other));
                 if (result.OrphanCount > 0) others.Add($"미설치 잔여 폴더 {result.OrphanCount}");
 
                 if (others.Count > 0) parts.Add("제외: " + string.Join(" · ", others));
@@ -156,6 +182,10 @@ namespace steam_game_tool
 
             return string.Join("   ·   ", parts);
         }
+
+        /// <summary>경로를 세 개까지 적고 나머지는 개수로 줄인다.</summary>
+        private static string Abbreviate(IReadOnlyList<string> paths) =>
+            string.Join(", ", paths.Take(3)) + (paths.Count > 3 ? $" 외 {paths.Count - 3}개" : "");
 
         private async void OnBrowseClick(object? sender, RoutedEventArgs e)
         {
@@ -185,16 +215,12 @@ namespace steam_game_tool
                     Title = "추가할 폴더(라이브러리 또는 단일 게임 보존본) 선택",
                     AllowMultiple = true,
                 });
-                var paths = folders.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).ToList();
+                var paths = folders.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
                 if (paths.Count > 0)
                 {
-                    var current = RootBox.Text?.Trim() ?? "";
-                    var existing = current.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-                    foreach (var p in paths)
-                    {
-                        if (p != null && !existing.Contains(p, StringComparer.OrdinalIgnoreCase))
-                            existing.Add(p);
-                    }
+                    // 스캔할 때와 같은 규칙으로 나눠야 입력란의 경로가 어긋나지 않는다.
+                    var existing = SteamLibraries.SplitRootList(RootBox.Text);
+                    existing.AddRange(paths.Where(p => !existing.Contains(p, StringComparer.OrdinalIgnoreCase)));
                     RootBox.Text = string.Join("; ", existing);
                 }
             }
@@ -204,13 +230,25 @@ namespace steam_game_tool
             }
         }
 
-        private void OnAutoClick(object? sender, RoutedEventArgs e)
+        /// <summary>
+        /// 자동 감지가 무엇을 찾는지 미리 보여 준다. 스캔은 하지 않는다.
+        /// 모든 드라이브를 훑으므로 백그라운드에서 돌린다 — 네트워크 드라이브나 잠든 외장 디스크가 있으면 오래 걸릴 수 있다.
+        /// </summary>
+        private async void OnAutoClick(object? sender, RoutedEventArgs e)
         {
             RootBox.Text = "";
-            var found = SteamScanner.FindCommonFolders();
-            StatusText.Text = found.Count > 0
-                ? "자동 감지된 폴더: " + string.Join("  |  ", found)
-                : "자동 감지 실패 — 폴더를 직접 지정하세요.";
+            StatusText.Text = "Steam 라이브러리를 찾는 중...";
+            try
+            {
+                var found = await Task.Run(SteamScanner.FindCommonFolders);
+                StatusText.Text = found.Count > 0
+                    ? "자동 감지된 폴더: " + string.Join("  |  ", found)
+                    : "자동 감지 실패 — 폴더를 직접 지정하세요.";
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "자동 감지 실패: " + ex.Message;
+            }
         }
 
         private async void OnExportClick(object? sender, RoutedEventArgs e)
@@ -223,22 +261,21 @@ namespace steam_game_tool
 
             var marker = SelectedMarker;
             var definition = ExportLists.For(marker);
-            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-            {
-                Title = "목록을 TXT로 저장",
-                SuggestedFileName = definition.FileName,
-                DefaultExtension = "txt",
-                FileTypeChoices = new[]
-                {
-                    new FilePickerFileType("텍스트 파일") { Patterns = new[] { "*.txt" } },
-                },
-            });
-            if (file is null) return;
-
-
-
+            // async void 이므로 저장 창 호출까지 try 안에 둔다. 예외가 새어 나가면 프로세스가 죽는다.
             try
             {
+                var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    Title = "목록을 TXT로 저장",
+                    SuggestedFileName = definition.FileName,
+                    DefaultExtension = "txt",
+                    FileTypeChoices = new[]
+                    {
+                        new FilePickerFileType("텍스트 파일") { Patterns = new[] { "*.txt" } },
+                    },
+                });
+                if (file is null) return;
+
                 var text = ExportLists.Generate(_last!, marker, GamesOnlyCheck.IsChecked == true);
                 await using (var stream = await file.OpenWriteAsync())
                 {

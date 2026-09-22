@@ -94,10 +94,10 @@ public sealed class SteamGame : INotifyPropertyChanged
         (IsOrphan && IsPlayableUnity) ||
         (!IsOrphan && AppType is SteamAppType.Unknown);
 
-    /// <summary>게임 폴더 바로 아래 MonoBleedingEdge 폴더(=Unity Mono 런타임) 존재.</summary>
+    /// <summary>게임 폴더 아래 깊이 8 안 어딘가에 MonoBleedingEdge 폴더(=Unity Mono 런타임) 존재. 배지용이며 분류에는 쓰지 않는다.</summary>
     public bool HasMonoBleedingEdge { get; set; }
 
-    /// <summary>아래 어딘가에 Managed 폴더(=Unity 어셈블리) 존재.</summary>
+    /// <summary>게임 폴더 아래 깊이 8 안 어딘가에 Managed 폴더(=Unity 어셈블리) 존재. 배지용이며 분류에는 쓰지 않는다.</summary>
     public bool HasManaged { get; set; }
 
     /// <summary>폴더명과 같은 이름의 하위 폴더 존재(중첩).</summary>
@@ -109,7 +109,7 @@ public sealed class SteamGame : INotifyPropertyChanged
     public bool HasUnityMono => (Backend & UnityBackend.Mono) != 0;
     public bool HasUnityIl2Cpp => (Backend & UnityBackend.Il2Cpp) != 0;
 
-    /// <summary>중첩 폴더이면서 Unity 스크립팅 백엔드가 확인된 순수 Unity 게임.</summary>
+    /// <summary>설치 폴더 바로 아래가 아닌 곳(inner)에 백엔드가 정해진 Unity 플레이어가 있다. 보기 「중첩」의 기준이다.</summary>
     public bool HasNestedUnity => BackendEvidence.Any(e => e.DataPath is not null && e.Layer == "inner" && e.Backend != UnityBackend.Unknown);
     private PlayerSelection? _selection;
     public PlayerSelection Selection => _selection ??= GameClassification.Select(this);

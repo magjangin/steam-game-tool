@@ -70,7 +70,7 @@ namespace steam_game_tool
         /// </summary>
         /// <param name="libraryRoots">라이브러리 루트(=steamapps 의 부모) 경로들.</param>
         /// <param name="steamPath">Steam 설치 폴더. appcache\appinfo.vdf 를 여기서 찾는다.</param>
-        /// <param name="onWarning">읽기 실패를 알리는 콜백. 여러 스레드에서 불릴 수 있다.</param>
+        /// <param name="onWarning">읽기 실패를 알리는 콜백. 호출한 스레드에서 차례로 불린다.</param>
         public static SteamCatalog Build(
             IEnumerable<string> libraryRoots,
             string? steamPath,

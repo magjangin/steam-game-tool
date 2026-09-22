@@ -123,7 +123,7 @@ C# / .NET 10 (`net10.0-windows`) · Avalonia 12.0.5 · MVVM 없이 code-behind �
 dotnet test "steam game tool.slnx"
 ```
 
-xUnit 테스트 163개가 판별 규칙과 MelonLoader 설치 규칙을 고정합니다.
+xUnit 테스트 171개가 판별 규칙과 MelonLoader 설치 규칙을 고정합니다.
 
 ---
 

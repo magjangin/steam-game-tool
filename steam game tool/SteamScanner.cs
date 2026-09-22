@@ -19,13 +19,11 @@ public static class SteamScanner
     internal static string? LibraryRootOf(string commonDir) => SteamLibraries.LibraryRootOf(commonDir);
 
     /// <summary>
-    /// 검사 범위의 플레이어별 백엔드를 판별하고 합집합을 반환한다.
-    /// 서브 툴(Voice Editor 등)이나 모드 폴더(Modded, MelonLoader 등)의 산출물로 인한 오염을 방지하기 위해
-    /// 메인 플레이어와 루트 *_Data 디렉터리를 기준으로 판별한다.
+    /// 폴더 하나의 백엔드. 모든 플레이어 판정의 합집합이라 Mono | Il2Cpp 가 될 수 있다.
+    /// <see cref="Scan"/> 과 같은 값을 낸다. 대표 플레이어 기준의 분류는 <see cref="SteamGame.ClassifiedBackend"/>.
     /// </summary>
     public static UnityBackend DetectUnityBackend(string installDir) =>
         UnityInspector.Inspect(installDir).Backend;
-
 
     /// <summary>지정한 common 폴더(들)을 스캔한다. roots 가 비면 자동 감지.</summary>
     /// <param name="catalog">

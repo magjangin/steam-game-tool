@@ -169,7 +169,7 @@ public static class UnityInspector
             .FirstOrDefault(Directory.Exists);
         var hasRuntime = mbePath is not null || monoPath is not null;
 
-        // IL2CPP priority is local to one player, never across different players.
+        // IL2CPP 우선순위는 이 플레이어 안에서만 적용한다. 다른 플레이어의 IL2CPP 증거가 이 플레이어의 판정을 덮지 않는다.
         var detected = metadata || nativePair ? UnityBackend.Il2Cpp :
             assemblies || (hasRuntime && hasManagedDir) ? UnityBackend.Mono : UnityBackend.Unknown;
 

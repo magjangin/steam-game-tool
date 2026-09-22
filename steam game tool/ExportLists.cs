@@ -54,7 +54,7 @@ public static class ExportLists
     {
         var scope = SteamScanner.Filter(result, Marker.Scanned, gamesOnly).ToArray();
         GameClassification.Validate(scope);
-        // Verify actual filter output, not merely the classification properties.
+        // 분류 속성만이 아니라 실제 필터 결과로 분할을 확인한다.
         var mono = SteamScanner.Filter(result, Marker.UnityMono, gamesOnly).ToHashSet();
         var il2cpp = SteamScanner.Filter(result, Marker.UnityIl2Cpp, gamesOnly).ToHashSet();
         var unresolved = SteamScanner.Filter(result, Marker.BackendUnresolved, gamesOnly).ToHashSet();
@@ -67,7 +67,7 @@ public static class ExportLists
         var player = SteamScanner.Filter(result, Marker.PlayerUnresolved, gamesOnly).ToHashSet();
         RequirePartition(scope, unity, SteamScanner.Filter(result, Marker.NonUnity, gamesOnly).ToHashSet(), player);
         if (!SteamScanner.Filter(result, Marker.NestedUnity, gamesOnly).All(g => unity.Contains(g) || player.Contains(g)))
-            throw new System.InvalidOperationException("Nested player missing from Unity/player-unresolved exports.");
+            throw new System.InvalidOperationException("목록 검증 실패: 중첩 목록의 게임이 Unity·플레이어 미확정 목록 어디에도 없습니다.");
     }
 
     private static void RequirePartition(IEnumerable<SteamGame> scope, params HashSet<SteamGame>[] sets)
@@ -75,9 +75,9 @@ public static class ExportLists
         var union = new HashSet<SteamGame>();
         foreach (var set in sets)
         {
-            if (union.Overlaps(set)) throw new System.InvalidOperationException("Export partition overlap.");
+            if (union.Overlaps(set)) throw new System.InvalidOperationException("목록 검증 실패: 한 게임이 서로 겹치면 안 되는 목록 두 곳에 들어 있습니다.");
             union.UnionWith(set);
         }
-        if (!union.SetEquals(scope)) throw new System.InvalidOperationException("Export partition has missing entries.");
+        if (!union.SetEquals(scope)) throw new System.InvalidOperationException("목록 검증 실패: 어느 목록에도 들어가지 않은 게임이 있습니다.");
     }
 }

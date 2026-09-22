@@ -59,7 +59,7 @@ public static class GameClassification
                 (g.ClassifiedBackend == UnityBackend.Il2Cpp ? 1 : 0) + (g.IsBackendUnresolved ? 1 : 0);
             int runtimeBuckets = (g.HasLegacyMono ? 1 : 0) + (g.HasModernMono ? 1 : 0) + (g.IsRuntimeUnresolved ? 1 : 0);
             if (backendBuckets != 1 || runtimeBuckets != (g.ClassifiedBackend == UnityBackend.Mono ? 1 : 0))
-                throw new InvalidOperationException($"Classification partition failed: {g.InstallDir}");
+                throw new InvalidOperationException($"분류 검증 실패: 한 게임이 백엔드·런타임 분류 중 정확히 한 곳에 들어가지 않습니다: {g.InstallDir}");
         }
     }
 }
