@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="steam game tool/steam game tool.csproj" />
+  <Project Path="SteamGameTool.Tests/SteamGameTool.Tests.csproj" />
+</Solution>

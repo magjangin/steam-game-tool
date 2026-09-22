@@ -1,0 +1,13 @@
+# 빌드 출력
+bin/
+obj/
+TestResults/
+publish/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Claude Code 개인 설정
+.claude/settings.local.json

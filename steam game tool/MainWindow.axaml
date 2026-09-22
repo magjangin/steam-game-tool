@@ -1,0 +1,137 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:steam_game_tool"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="880"
+        x:Class="steam_game_tool.MainWindow"
+        Width="1280" Height="880" MinWidth="860" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Title="Steam Unity 런타임 판별기">
+
+    <DockPanel Margin="16">
+
+        <!-- 상단: 컨트롤. 자주 쓰지 않는 동작은 「폴더」「저장」「MelonLoader 설치」 메뉴 안에 둔다. -->
+        <StackPanel DockPanel.Dock="Top" Spacing="10">
+
+            <!-- 스캔 루트 -->
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="스캔 폴더:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <DropDownButton DockPanel.Dock="Right" Content="폴더" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuItem Header="찾아보기…" Click="OnBrowseClick"
+                                      ToolTip.Tip="입력란을 고른 steamapps\common 폴더 하나로 바꿉니다."/>
+                            <MenuItem Header="폴더 추가…" Click="OnAddFolderClick"
+                                      ToolTip.Tip="외부 보존본 폴더 등을 추가로 지정합니다."/>
+                            <Separator/>
+                            <MenuItem Header="자동 감지" Click="OnAutoClick"
+                                      ToolTip.Tip="입력란을 비우고, 자동 감지로 찾은 폴더를 상태 줄에 보여 줍니다."/>
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <TextBox x:Name="RootBox" VerticalAlignment="Center"
+                         PlaceholderText="(비워두면 자동 감지: 모든 라이브러리 및 보존본. 여러 개는 세미콜론(;) 구분)"/>
+            </DockPanel>
+
+            <!-- 실행 -->
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <DropDownButton Content="저장">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="TXT로 저장…" Click="OnExportClick"
+                                          ToolTip.Tip="지금 보기 목록을 TXT 파일 하나로 저장합니다."/>
+                                <MenuItem Header="6개 모두 저장…" Click="OnExportAllClick"
+                                          ToolTip.Tip="보기 목록 6개를 선택한 폴더에 기존 파일명으로 한 번에 저장합니다. 같은 이름의 파일은 덮어씁니다."/>
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <!-- MelonLoader 설치: 자동 설치는 전체 Unity 게임, zip 직접 선택은 지금 보기 목록에서 체크된 게임이 대상이다. -->
+                    <DropDownButton x:Name="MelonMenuButton" Content="MelonLoader 설치">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="자동 설치…" Click="OnMelonAutoClick"
+                                          ToolTip.Tip="보기와 상관없이 전체 Unity 게임 중 체크된 MonoBleedingEdge·IL2CPP 게임(GUNVOLT RECORDS Cychronicle 등)에 0.7.3 이상 중 최신 정식 릴리스를 GitHub 에서 받아 설치합니다. 구형 레거시 Mono(Cuphead 등)와 MelonLoader 를 직접 지운 게임은 자동 설치하지 않습니다. 설치 전에 대상과 건너뛸 게임을 보여 줍니다."/>
+                                <MenuItem Header="zip 직접 선택…" Click="OnMelonZipClick"
+                                          ToolTip.Tip="가지고 있는 MelonLoader zip(nightly 등)을 지금 보기 목록에서 체크된 게임 모두에 설치합니다. 버전 규칙은 쓰지 않습니다. 네트워크를 쓰지 않습니다."/>
+                                <Separator/>
+                                <MenuItem x:Name="MelonReplaceCheck" Header="다른 버전이 설치된 게임도 교체"
+                                          ToggleType="CheckBox" IsChecked="True" StaysOpenOnClick="True"
+                                          ToolTip.Tip="기본으로 켜져 있습니다(사용자 요청, 2026-09-21). 끄면 MelonLoader 가 있는 게임은 건너뜁니다. 켜면 버전이 규칙(직접 고른 zip 이면 그 zip)과 다른 게임의 version.dll·dobby.dll·NOTICE.txt·MelonLoader 폴더를 바꿉니다. Mods·UserData 등은 그대로 둡니다."/>
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Button x:Name="ScanButton" Content="스캔 시작" Click="OnScanClick"
+                            Classes="accent" Padding="16,8" FontSize="14"/>
+                    <TextBlock Text="보기:" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="FilterCombo" Width="290" SelectedIndex="0"
+                              SelectionChanged="OnFilterChanged" VerticalAlignment="Center">
+                        <!-- Tag 가 곧 필터 값이다. 항목 순서와 Marker 순서는 서로 무관하다. -->
+                        <ComboBoxItem Tag="{x:Static local:Marker.Any}">전체 Unity 게임 (Mono + IL2CPP)</ComboBoxItem>
+                        <ComboBoxItem Tag="{x:Static local:Marker.UnityMono}">Unity Mono</ComboBoxItem>
+                        <ComboBoxItem Tag="{x:Static local:Marker.MonoLegacy}">Mono (구형 레거시 - Data/Mono)</ComboBoxItem>
+                        <ComboBoxItem Tag="{x:Static local:Marker.MonoBleedingEdge}">MonoBleedingEdge</ComboBoxItem>
+                        <ComboBoxItem Tag="{x:Static local:Marker.UnityIl2Cpp}">Unity IL2CPP</ComboBoxItem>
+                        <ComboBoxItem Tag="{x:Static local:Marker.NestedUnity}"
+                                      ToolTip.Tip="설치 루트 아래에서 Unity 데이터와 백엔드가 확인된 게임입니다.">중첩 (Unity 게임)</ComboBoxItem>
+                    </ComboBox>
+                    <CheckBox x:Name="GamesOnlyCheck" Content="게임만" IsChecked="True"
+                              IsCheckedChanged="OnFilterChanged" VerticalAlignment="Center"
+                              ToolTip.Tip="사운드트랙·소프트웨어·도구와, 설치되어 있지 않은 잔여 폴더를 제외합니다."/>
+                    <ProgressBar x:Name="Spinner" IsIndeterminate="True" IsVisible="False"
+                                 Width="120" VerticalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
+
+            <TextBlock x:Name="SummaryText" FontSize="16" FontWeight="SemiBold"
+                       Text="스캔을 시작하세요." Margin="0,8,0,0" TextWrapping="Wrap"/>
+            <TextBlock x:Name="StatusText" Foreground="Gray" Text="" TextWrapping="Wrap"/>
+            <Border Height="1" Background="#33888888" Margin="0,2,0,0"/>
+
+            <!-- 목록 체크박스(= MelonLoader 설치 대상)를 한 번에 바꾼다. 여백은 목록 항목의 체크박스 위치에 맞췄다. -->
+            <CheckBox x:Name="SelectAllCheck" Click="OnSelectAllClick" IsEnabled="False"
+                      MinWidth="0" Margin="14,0,0,0" Content="MelonLoader 설치 대상"
+                      ToolTip.Tip="지금 보기 목록의 게임을 모두 체크하거나 모두 풉니다. 다른 보기에 있는 게임의 체크는 그대로 둡니다."/>
+        </StackPanel>
+
+        <!-- 본문: 게임 목록 -->
+        <ListBox x:Name="GameList">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="local:SteamGame">
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="2,4">
+                        <CheckBox Grid.Column="0" IsChecked="{Binding InstallChecked}"
+                                  MinWidth="0" Margin="0,0,8,0" VerticalAlignment="Center"
+                                  ToolTip.Tip="MelonLoader 설치 대상"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding DisplayName}" FontSize="14"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding InstallDir}" FontSize="11" Foreground="Gray"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                        <ItemsControl Grid.Column="2" ItemsSource="{Binding Tags}"
+                                      VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="4"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Border CornerRadius="4" Padding="8,2"
+                                            Background="{Binding Converter={x:Static local:Converters.TagBrush}}">
+                                        <TextBlock Text="{Binding}" Foreground="White"
+                                                   FontSize="11" FontWeight="Bold"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>
