@@ -4,7 +4,7 @@
 
 ![Windows](https://img.shields.io/badge/platform-Windows-0078D6) ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4) ![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)
 
-게임 885개가 든 라이브러리를 약 0.7초 만에 훑습니다.
+폴더 968개짜리 라이브러리를 다시 스캔할 때 약 1초 걸립니다. 컴퓨터를 켜고 처음 스캔할 때는 디스크를 실제로 읽느라 1분 넘게 걸릴 수 있습니다(2026-09-22 측정).
 
 ## 왜 만들었나
 
@@ -20,9 +20,9 @@ Unity 게임은 C# 코드를 실행 파일로 만드는 방식(스크립팅 백�
 
 ## 주요 기능
 
-- **Steam 라이브러리 자동 감지** — 레지스트리와 `libraryfolders.vdf`로 모든 라이브러리 폴더를 찾습니다. 폴더를 직접 지정할 수도 있습니다.
-- **Unity 백엔드 판별** — 게임마다 Mono와 IL2CPP를 가리고, Mono는 다시 구형 레거시(`_Data\Mono`)와 MonoBleedingEdge로 나눠 배지로 표시합니다.
-- **게임만 집계** — `appmanifest_*.acf`와 `appcacheppinfo.vdf`를 읽어 사운드트랙·소프트웨어·도구와 잔여 폴더를 뺍니다. 목록에는 폴더명 대신 스토어 이름이 나옵니다.
+- **Steam 라이브러리 자동 감지** — 레지스트리, 드라이브마다 흔한 Steam 설치 위치, `libraryfolders.vdf`로 모든 라이브러리 폴더를 찾습니다. 드라이브 최상위에 따로 둔 Unity 게임 폴더도 함께 찾습니다. 폴더를 직접 지정할 수도 있습니다.
+- **Unity 백엔드 판별** — 게임마다 Mono와 IL2CPP를 가리고, Mono는 다시 구형 레거시(`_Data\Mono`)와 MonoBleedingEdge로 나눕니다. 판정 근거는 배지로 보여 줍니다.
+- **게임만 집계** — `appmanifest_*.acf`와 `appcache\appinfo.vdf`를 읽어 사운드트랙·소프트웨어·도구와 잔여 폴더를 뺍니다. 목록에는 폴더명 대신 스토어 이름이 나옵니다.
 - **보기 필터와 TXT 내보내기** — 6가지 보기로 목록을 거릅니다. 지금 보는 목록을 TXT로 저장하거나, 6개 목록을 한 번에 저장합니다.
 - **MelonLoader 일괄 설치** — 체크한 게임에 GitHub의 최신 정식 릴리스를 받아 설치합니다. 가지고 있는 zip을 골라 설치할 수도 있습니다.
 
@@ -86,11 +86,11 @@ dotnet publish "steam game tool/steam game tool.csproj" -c Release -r win-x64 --
 | `<게임>_Data\il2cpp_data\Metadata\global-metadata.dat` | **IL2CPP** |
 | `GameAssembly.dll` + `UnityPlayer.dll` | **IL2CPP** |
 
-한 폴더에 런처와 본편의 백엔드가 다르면 두 태그가 함께 붙습니다. 규칙 전문과 오탐·미탐 사례는 [docs/04-판별 로직](docs/04-판별-로직.md)에 있습니다.
+판정은 `<게임>_Data` 폴더(플레이어)마다 따로 합니다. 한 폴더에 런처와 본편의 백엔드가 다르면 배지는 둘 다 붙고, 목록은 대표 플레이어 하나를 골라 나눕니다. 규칙 전문과 오탐·미탐 사례는 [docs/04-판별 로직](docs/04-판별-로직.md)에 있습니다.
 
 ## 안전성
 
-- **스캔은 읽기 전용입니다.** 게임 파일을 쓰거나 지우거나 실행하지 않습니다.
+- **스캔은 게임 폴더를 건드리지 않습니다.** 게임 파일을 쓰거나 지우거나 실행하지 않습니다. 스캔이 쓰는 것은 `%LOCALAPPDATA%\SteamGameTool\`의 스캔 기준선 파일뿐입니다.
 - **게임 폴더를 바꾸는 건 MelonLoader 설치뿐입니다.** 확인 창에서 「설치」를 눌렀을 때만 바꿉니다.
 - **네트워크는 자동 설치에서만 씁니다.** GitHub에서 MelonLoader 릴리스 목록과 zip을 받습니다. 스캔은 로컬 파일과 레지스트리만 봅니다.
 
@@ -104,15 +104,16 @@ dotnet publish "steam game tool/steam game tool.csproj" -c Release -r win-x64 --
 |---|---|
 | [01-개요](docs/01-개요.md) | 무엇을 하는 도구인가, 무엇을 하지 않는가 |
 | [02-비유로 이해하기](docs/02-비유로-이해하기.md) | Mono/IL2CPP를 일상 비유로 설명 |
-| [03-아키텍처](docs/03-아키텍처.md) | 구조, 데이터 흐름, 스레딩 |
-| [04-판별 로직](docs/04-판별-로직.md) | 판별 규칙 명세 |
+| [03-아키텍처](docs/03-아키텍처.md) | 파일 구성, 데이터 흐름, 스레딩 |
+| [04-판별 로직](docs/04-판별-로직.md) | 판별 규칙, 대표 플레이어, 오탐·미탐 사례 |
 | [05-코드 레퍼런스](docs/05-코드-레퍼런스.md) | 타입·멤버별 상세 |
 | [06-빌드와 실행](docs/06-빌드와-실행.md) | 빌드, 배포, 문제 해결 |
 | [07-개선 로드맵](docs/07-개선-로드맵.md) | 알려진 문제와 개선 과제 |
-| [08-용어집](docs/08-용어집.md) | Steam·Unity·.NET 용어 사전 |
+| [08-용어집](docs/08-용어집.md) | Steam·Unity·.NET·이 도구의 용어 |
 | [09-앱 종류 판별](docs/09-앱-종류-판별.md) | 게임과 사운드트랙·도구 가르기 |
-| [10-이름과 내보내기](docs/10-이름과-내보내기.md) | 이름 정규화, 스캔 범위, TXT 형식 |
+| [10-이름과 내보내기](docs/10-이름과-내보내기.md) | 이름 정규화, TXT 형식, 저장 전 검증, 누락 검사 |
 | [11-MelonLoader 설치](docs/11-MelonLoader-설치.md) | 일괄 설치, 버전 규칙, 교체, 건너뛰는 경우, 안전장치 |
+| [12-MelonLoader 작업 기록](docs/12-MelonLoader-작업-기록.md) | 실제 라이브러리에 설치·교체한 기록 |
 
 ## 개발
 
