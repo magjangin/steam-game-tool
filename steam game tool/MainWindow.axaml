@@ -47,6 +47,8 @@
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>
+                    <Button x:Name="AcfUnlockButton" Content="ACF 잠금 해제" Click="OnAcfUnlockClick"
+                            ToolTip.Tip="Steam 라이브러리의 모든 appmanifest_*.acf 에서 읽기 전용 속성을 풀고, AutoUpdateBehavior 를 0(자동 업데이트 허용)으로 되돌리며, 남아 있는 .bak 백업 파일을 복원·정리합니다."/>
                     <!-- MelonLoader 설치: 자동 설치는 전체 Unity 게임, zip 직접 선택은 지금 보기 목록에서 체크된 게임이 대상이다. -->
                     <DropDownButton x:Name="MelonMenuButton" Content="MelonLoader 설치">
                         <DropDownButton.Flyout>

@@ -223,4 +223,48 @@ public static class SteamLibraries
         }
         catch { return null; }
     }
+
+    /// <summary>
+    /// 지정한 경로들(비어 있으면 자동 감지한 모든 라이브러리)에서 <c>steamapps</c> 폴더들을 찾는다.
+    /// 입력이 <c>steamapps\common</c>, <c>steamapps</c>, 라이브러리 루트, 또는 <c>common</c> 아래 게임 폴더여도 되짚는다.
+    /// </summary>
+    public static List<string> FindSteamAppsFolders(IEnumerable<string>? roots = null)
+    {
+        var candidates = roots?.ToList();
+        if (candidates is null || candidates.Count == 0)
+        {
+            candidates = FindCommonFolders();
+            if (FindSteamPath() is { } steamPath)
+                candidates.Add(steamPath);
+        }
+
+        var results = new List<string>();
+        foreach (var raw in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            try
+            {
+                var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(raw));
+                string? steamapps = null;
+
+                if (LibraryRootOf(full) is { } libFromCommon)
+                    steamapps = Path.Combine(libFromCommon, "steamapps");
+                else if (Path.GetFileName(full).Equals("steamapps", StringComparison.OrdinalIgnoreCase))
+                    steamapps = full;
+                else if (Directory.Exists(Path.Combine(full, "steamapps")))
+                    steamapps = Path.Combine(full, "steamapps");
+                else if (Directory.GetParent(full) is { } parent && LibraryRootOf(parent.FullName) is { } libFromGame)
+                    steamapps = Path.Combine(libFromGame, "steamapps");
+
+                if (steamapps is not null && Directory.Exists(steamapps) &&
+                    !results.Contains(steamapps, StringComparer.OrdinalIgnoreCase))
+                {
+                    results.Add(steamapps);
+                }
+            }
+            catch { }
+        }
+        return results;
+    }
 }
+

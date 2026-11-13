@@ -352,9 +352,80 @@ namespace steam_game_tool
 
         private void SetMelonBusy(bool busy)
         {
+            AcfUnlockButton.IsEnabled = !busy;
             MelonMenuButton.IsEnabled = !busy;
             ScanButton.IsEnabled = !busy;
             Spinner.IsVisible = busy;
+        }
+
+        /// <summary>Steam 라이브러리의 모든 appmanifest_*.acf 에서 잠금(읽기 전용, AutoUpdateBehavior)을 풀고 .bak 백업을 복원·정리한다.</summary>
+        private async void OnAcfUnlockClick(object? sender, RoutedEventArgs e)
+        {
+            var typed = SteamLibraries.SplitRootList(RootBox.Text);
+            SetMelonBusy(true);
+            try
+            {
+                StatusText.Text = "Steam 매니페스트(appmanifest_*.acf)를 살피는 중...";
+                var targets = await Task.Run(() => AcfUnlocker.InspectAll(typed.Count > 0 ? typed : null));
+                if (targets.Count == 0)
+                {
+                    StatusText.Text = "Steam 라이브러리에서 appmanifest_*.acf 파일을 찾지 못했습니다.";
+                    return;
+                }
+
+                var report = AcfUnlocker.Summarize(targets);
+                var ready = targets.Count(t => t.NeedsUnlock);
+                Spinner.IsVisible = false;
+
+                if (ready == 0)
+                {
+                    StatusText.Text = $"ACF 잠금 해제할 게임이 없습니다 (검사한 매니페스트 {targets.Count}개 모두 정상).";
+                    await TextDialog.ShowAsync(this, "ACF 잠금 해제", report);
+                    return;
+                }
+
+                if (!await TextDialog.ShowAsync(this, "ACF 잠금 해제", report, $"{ready}개 잠금 해제", "취소"))
+                {
+                    StatusText.Text = "ACF 잠금 해제를 취소했습니다.";
+                    return;
+                }
+
+                Spinner.IsVisible = true;
+                var unlocking = true;
+                var outcomes = await Task.Run(() => AcfUnlocker.UnlockAll(targets, (i, n, t) =>
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (unlocking) StatusText.Text = $"ACF 잠금 해제 중 {i}/{n}: {t.Name}";
+                    })));
+                unlocking = false;
+
+                var failed = outcomes.Where(o => o.Error is not null).ToList();
+                var succeeded = outcomes.Count - failed.Count;
+                var restored = outcomes.Count(o => o.Error is null && o.RestoredFromBackup);
+                var removedBaks = outcomes.Where(o => o.Error is null).Sum(o => o.RemovedBackupCount);
+
+                StatusText.Text = $"ACF 잠금 해제 완료 {succeeded}개" +
+                                  (restored > 0 ? $" (원본 백업 복원 {restored}개)" : "") +
+                                  (removedBaks > 0 ? $" · .bak 정리 {removedBaks}개" : "") +
+                                  $" · 전체 매니페스트 {targets.Count}개" +
+                                  (failed.Count > 0 ? $" · 실패 {failed.Count}개" : "");
+
+                if (failed.Count > 0)
+                {
+                    Spinner.IsVisible = false;
+                    await TextDialog.ShowAsync(this, "ACF 잠금 해제 실패",
+                        $"실패 {failed.Count}개\n\n" +
+                        string.Join("\n", failed.Select(o => $"{o.Target.Name} ({Path.GetFileName(o.Target.AcfPath)})\n    {o.Error}")));
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "ACF 잠금 해제 실패: " + ex.Message;
+            }
+            finally
+            {
+                SetMelonBusy(false);
+            }
         }
 
         /// <summary>GitHub 에서 게임마다 버전 규칙에 맞는 릴리스를 받아 설치한다.</summary>
