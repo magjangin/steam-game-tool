@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace steam_game_tool;
 
@@ -42,11 +45,13 @@ public static class ExportLists
     {
         Validate(result, gamesOnly);
         var outputs = markers.Distinct()
-            .Select(m => (Path: System.IO.Path.Combine(folder, For(m).FileName),
-                          Text: GameExport.ToText(SteamScanner.Filter(result, m, gamesOnly), For(m).Header)))
+            .Select(For)
+            .Select(list => (Path: Path.Combine(folder, list.FileName),
+                             Text: GameExport.ToText(SteamScanner.Filter(result, list.Marker, gamesOnly), list.Header)))
             .ToArray();
+        var utf8NoBom = new UTF8Encoding(false);
         foreach (var (path, text) in outputs)
-            System.IO.File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
+            File.WriteAllText(path, text, utf8NoBom);
         return outputs.Select(o => o.Path).ToArray();
     }
 
@@ -67,7 +72,7 @@ public static class ExportLists
         var player = SteamScanner.Filter(result, Marker.PlayerUnresolved, gamesOnly).ToHashSet();
         RequirePartition(scope, unity, SteamScanner.Filter(result, Marker.NonUnity, gamesOnly).ToHashSet(), player);
         if (!SteamScanner.Filter(result, Marker.NestedUnity, gamesOnly).All(g => unity.Contains(g) || player.Contains(g)))
-            throw new System.InvalidOperationException("목록 검증 실패: 중첩 목록의 게임이 Unity·플레이어 미확정 목록 어디에도 없습니다.");
+            throw new InvalidOperationException("목록 검증 실패: 중첩 목록의 게임이 Unity·플레이어 미확정 목록 어디에도 없습니다.");
     }
 
     private static void RequirePartition(IEnumerable<SteamGame> scope, params HashSet<SteamGame>[] sets)
@@ -75,9 +80,9 @@ public static class ExportLists
         var union = new HashSet<SteamGame>();
         foreach (var set in sets)
         {
-            if (union.Overlaps(set)) throw new System.InvalidOperationException("목록 검증 실패: 한 게임이 서로 겹치면 안 되는 목록 두 곳에 들어 있습니다.");
+            if (union.Overlaps(set)) throw new InvalidOperationException("목록 검증 실패: 한 게임이 서로 겹치면 안 되는 목록 두 곳에 들어 있습니다.");
             union.UnionWith(set);
         }
-        if (!union.SetEquals(scope)) throw new System.InvalidOperationException("목록 검증 실패: 어느 목록에도 들어가지 않은 게임이 있습니다.");
+        if (!union.SetEquals(scope)) throw new InvalidOperationException("목록 검증 실패: 어느 목록에도 들어가지 않은 게임이 있습니다.");
     }
 }

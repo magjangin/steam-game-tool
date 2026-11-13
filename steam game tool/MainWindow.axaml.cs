@@ -16,7 +16,7 @@ namespace steam_game_tool
 {
     public partial class MainWindow : Window
     {
-        private readonly ObservableCollection<SteamGame> _view = new();
+        private ObservableCollection<SteamGame> _view = new();
         private ScanResult? _last;
 
         public MainWindow()
@@ -52,22 +52,18 @@ namespace steam_game_tool
                 }
             }
 
-            ScanButton.IsEnabled = false;
-            Spinner.IsVisible = true;
+            // 스캔 중에는 설치·ACF 버튼도 잠근다. 비어 가는 목록이나 이전 결과로 설치가 돌지 않게 한다.
+            SetBusy(true);
             SummaryText.Text = "스캔 중...";
             StatusText.Text = "";
-            _view.Clear();
-            UpdateSelectAll();
+            ReplaceView([]);
 
             var previous = _last;
-            // 진행 메시지가 완료 메시지보다 늦게 처리될 수 있다. 끝난 뒤 도착한 것은 버린다.
-            var scanning = true;
             try
             {
-                var (result, inventory) = await Task.Run(() =>
+                var (result, inventory) = await RunWithProgressAsync(report =>
                 {
-                    var scanned = SteamScanner.Scan(roots, msg =>
-                        Dispatcher.UIThread.Post(() => { if (scanning) StatusText.Text = msg; }));
+                    var scanned = SteamScanner.Scan(roots, report);
                     // 대표 플레이어는 처음 읽을 때 계산된다(동률이면 데이터 폴더 크기를 전부 더함). 여기서 끝내 UI 스레드가 멈추지 않게 한다.
                     GameClassification.Validate(scanned.Games);
                     if (scanned.Roots.Count == 0) return (scanned, ScanInventory.InventoryCheck.None);
@@ -77,7 +73,6 @@ namespace steam_game_tool
                         check = check.Merge(ScanInventory.Check(ScanInventory.BaselineOf(previous), ScanInventory.BaselineOf(scanned)));
                     return (scanned, check);
                 });
-                scanning = false;
 
                 if (_last is not null)
                 {
@@ -106,14 +101,31 @@ namespace steam_game_tool
             }
             catch (Exception ex)
             {
-                scanning = false;
                 SummaryText.Text = "스캔 중 오류가 발생했습니다.";
                 StatusText.Text = ex.Message;
             }
             finally
             {
-                Spinner.IsVisible = false;
-                ScanButton.IsEnabled = true;
+                SetBusy(false);
+            }
+        }
+
+        /// <summary>
+        /// 백그라운드에서 일을 돌리며 진행 메시지를 상태 줄에 띄운다.
+        /// 진행 메시지가 완료 메시지보다 늦게 처리될 수 있으므로, 일이 끝난 뒤 도착한 것은 버린다.
+        /// </summary>
+        private async Task<T> RunWithProgressAsync<T>(Func<Action<string>, T> work)
+        {
+            var running = true;
+            try
+            {
+                return await Task.Run(() => work(msg =>
+                    Dispatcher.UIThread.Post(() => { if (running) StatusText.Text = msg; })));
+            }
+            finally
+            {
+                // await 뒤라 UI 스레드에서 실행된다. 이후에 처리되는 Post 는 모두 버려진다.
+                running = false;
             }
         }
 
@@ -350,7 +362,8 @@ namespace steam_game_tool
             return games;
         }
 
-        private void SetMelonBusy(bool busy)
+        /// <summary>스캔·ACF 잠금 해제·MelonLoader 설치는 한 번에 하나만 돈다. 도는 동안 세 버튼을 모두 잠근다.</summary>
+        private void SetBusy(bool busy)
         {
             AcfUnlockButton.IsEnabled = !busy;
             MelonMenuButton.IsEnabled = !busy;
@@ -362,7 +375,7 @@ namespace steam_game_tool
         private async void OnAcfUnlockClick(object? sender, RoutedEventArgs e)
         {
             var typed = SteamLibraries.SplitRootList(RootBox.Text);
-            SetMelonBusy(true);
+            SetBusy(true);
             try
             {
                 StatusText.Text = "Steam 매니페스트(appmanifest_*.acf)를 살피는 중...";
@@ -391,13 +404,8 @@ namespace steam_game_tool
                 }
 
                 Spinner.IsVisible = true;
-                var unlocking = true;
-                var outcomes = await Task.Run(() => AcfUnlocker.UnlockAll(targets, (i, n, t) =>
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        if (unlocking) StatusText.Text = $"ACF 잠금 해제 중 {i}/{n}: {t.Name}";
-                    })));
-                unlocking = false;
+                var outcomes = await RunWithProgressAsync(report =>
+                    AcfUnlocker.UnlockAll(targets, (i, n, t) => report($"ACF 잠금 해제 중 {i}/{n}: {t.Name}")));
 
                 var failed = outcomes.Where(o => o.Error is not null).ToList();
                 var succeeded = outcomes.Count - failed.Count;
@@ -424,7 +432,7 @@ namespace steam_game_tool
             }
             finally
             {
-                SetMelonBusy(false);
+                SetBusy(false);
             }
         }
 
@@ -434,7 +442,7 @@ namespace steam_game_tool
             var games = MelonCandidates(AutoInstallScope(), out var uncheckedCount);
             if (games is null) return;
 
-            SetMelonBusy(true);
+            SetBusy(true);
             try
             {
                 var replace = MelonReplaceCheck.IsChecked == true;
@@ -469,7 +477,7 @@ namespace steam_game_tool
             }
             finally
             {
-                SetMelonBusy(false);
+                SetBusy(false);
             }
         }
 
@@ -479,7 +487,7 @@ namespace steam_game_tool
             var games = MelonCandidates(_view, out var uncheckedCount);
             if (games is null) return;
 
-            SetMelonBusy(true);
+            SetBusy(true);
             try
             {
                 var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
@@ -511,7 +519,7 @@ namespace steam_game_tool
             }
             finally
             {
-                SetMelonBusy(false);
+                SetBusy(false);
             }
         }
 
@@ -532,14 +540,8 @@ namespace steam_game_tool
             }
 
             Spinner.IsVisible = true;
-            // 진행 메시지가 완료 메시지보다 늦게 처리될 수 있다. 끝난 뒤 도착한 것은 버린다.
-            var installing = true;
-            var outcomes = await Task.Run(() => MelonLoaderInstaller.InstallAll(plans, (i, n, g) =>
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (installing) StatusText.Text = $"MelonLoader 설치 중 {i}/{n}: {g.DisplayName}";
-                })));
-            installing = false;
+            var outcomes = await RunWithProgressAsync(report =>
+                MelonLoaderInstaller.InstallAll(plans, (i, n, g) => report($"MelonLoader 설치 중 {i}/{n}: {g.DisplayName}")));
 
             var failed = outcomes.Where(o => o.Error is not null).ToList();
             var replaced = outcomes.Count(o => o.Error is null && o.Plan.Replaces);
@@ -565,13 +567,27 @@ namespace steam_game_tool
             UpdateSelectAll();
         }
 
+        /// <summary>일괄 변경 중에는 게임마다 오는 변경 알림으로 전체 체크박스를 다시 세지 않는다(게임 수의 제곱만큼 돌았다).</summary>
+        private bool _bulkChecking;
+
         /// <summary>지금 보기 목록의 게임만 바꾼다. 다른 보기에 있는 게임의 체크는 그대로다.</summary>
         private void SetInstallChecked(bool value)
         {
-            foreach (var g in _view) g.InstallChecked = value;
+            _bulkChecking = true;
+            try
+            {
+                foreach (var g in _view) g.InstallChecked = value;
+            }
+            finally
+            {
+                _bulkChecking = false;
+            }
         }
 
-        private void OnInstallCheckedChanged(object? sender, PropertyChangedEventArgs e) => UpdateSelectAll();
+        private void OnInstallCheckedChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (!_bulkChecking) UpdateSelectAll();
+        }
 
         /// <summary>모두 체크면 체크, 모두 해제면 해제, 섞여 있으면 미정(null)으로 보인다.</summary>
         private void UpdateSelectAll()
@@ -590,11 +606,16 @@ namespace steam_game_tool
         private void ApplyFilter()
         {
             if (_last == null) return;
-            var marker = SelectedMarker;
+            ReplaceView(SteamScanner.Filter(_last, SelectedMarker, GamesOnlyCheck.IsChecked == true));
+        }
 
-            _view.Clear();
-            foreach (var g in SteamScanner.Filter(_last, marker, GamesOnlyCheck.IsChecked == true))
-                _view.Add(g);
+        /// <summary>
+        /// 보기 목록을 통째로 바꾼다. 항목을 하나씩 Add 하면 목록 컨트롤이 게임마다 변경 알림을 받아 다시 배치한다.
+        /// </summary>
+        private void ReplaceView(IEnumerable<SteamGame> games)
+        {
+            _view = new ObservableCollection<SteamGame>(games);
+            GameList.ItemsSource = _view;
             UpdateSelectAll();
         }
     }

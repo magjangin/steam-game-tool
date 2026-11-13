@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Enumeration;
 using System.Linq;
 
 namespace steam_game_tool;
@@ -104,17 +105,16 @@ public static class UnityInspector
         {
             var (current, depth, dataEligible) = stack.Pop();
 
-            string[] subDirs;
-            try { subDirs = Directory.GetDirectories(current); }
+            SubDirectory[] subDirs;
+            try { subDirs = ListSubDirectories(current); }
             catch (Exception ex)
             {
                 if (dataEligible) dataError ??= ex;
                 continue;
             }
 
-            foreach (var sub in subDirs)
+            foreach (var (sub, name, attributes) in subDirs)
             {
-                var name = Path.GetFileName(sub);
                 if (IsIgnored(name)) continue;
 
                 var isRuntime = string.Equals(name, "MonoBleedingEdge", StringComparison.OrdinalIgnoreCase);
@@ -123,23 +123,13 @@ public static class UnityInspector
                 else if (isManaged) hasManaged = true;
 
                 var childDataEligible = false;
-                if (dataEligible)
+                if (dataEligible &&
+                    !name.Equals("il2cpp_data", StringComparison.OrdinalIgnoreCase) &&
+                    (attributes & FileAttributes.ReparsePoint) == 0)
                 {
-                    try
-                    {
-                        if (name.Equals("il2cpp_data", StringComparison.OrdinalIgnoreCase) ||
-                            (File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0)
-                        {
-                            childDataEligible = false;
-                        }
-                        else
-                        {
-                            if (name.EndsWith("_Data", StringComparison.OrdinalIgnoreCase)) dataDirs.Add(sub);
-                            childDataEligible = !isManaged && !isRuntime &&
-                                !name.Equals("Mono", StringComparison.OrdinalIgnoreCase);
-                        }
-                    }
-                    catch (Exception ex) { dataError ??= ex; }
+                    if (name.EndsWith("_Data", StringComparison.OrdinalIgnoreCase)) dataDirs.Add(sub);
+                    childDataEligible = !isManaged && !isRuntime &&
+                        !name.Equals("Mono", StringComparison.OrdinalIgnoreCase);
                 }
 
                 if (depth + 1 < MaxScanDepth)
@@ -149,6 +139,32 @@ public static class UnityInspector
 
         return new InstallWalk(hasManaged, runtimePaths, dataDirs, dataError);
     }
+
+    private readonly record struct SubDirectory(string Path, string Name, FileAttributes Attributes);
+
+    /// <summary>
+    /// 바로 아래 폴더들을 이름·속성과 함께 읽는다. <see cref="Directory.GetDirectories(string)"/> 와 같은 범위다
+    /// (숨김·시스템 폴더 포함, 접근 거부는 예외).
+    /// <para>
+    /// 속성은 열거할 때 함께 오는 값을 쓴다. 예전에는 하위 폴더마다 <c>File.GetAttributes</c> 를 따로 불러
+    /// 폴더 하나당 시스템 호출이 한 번 더 들었고, 디스크 캐시가 비어 있을 때(부팅 직후 첫 스캔) 스캔 시간을 크게 늘렸다.
+    /// </para>
+    /// </summary>
+    private static SubDirectory[] ListSubDirectories(string directory) =>
+        new FileSystemEnumerable<SubDirectory>(directory,
+            (ref FileSystemEntry entry) => new SubDirectory(entry.ToSpecifiedFullPath(), entry.FileName.ToString(), entry.Attributes),
+            CompatibleOptions)
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry entry) => entry.IsDirectory,
+        }.ToArray();
+
+    /// <summary><see cref="Directory.GetDirectories(string)"/> 의 기본 옵션과 같다.</summary>
+    private static readonly EnumerationOptions CompatibleOptions = new()
+    {
+        AttributesToSkip = 0,
+        IgnoreInaccessible = false,
+        RecurseSubdirectories = false,
+    };
 
     /// <summary>*_Data 폴더 하나를 한 플레이어로 보고 증거를 만든다.</summary>
     private static UnityBackend AddPlayerEvidence(string installDir, string dataDir, List<BackendEvidence> evidence)

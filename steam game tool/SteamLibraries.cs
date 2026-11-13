@@ -79,16 +79,17 @@ public static class SteamLibraries
     /// <summary>
     /// 드라이브 루트 등에 별도로 보존해 둔 독립 Unity 게임 폴더(Muse Dash, STARTRAIL custom mode 등)를 탐색한다.
     /// </summary>
-    public static List<string> FindPreservedGameFolders()
+    public static List<string> FindPreservedGameFolders() => FindPreservedGameFolders(ReadyDriveRoots());
+
+    private static List<string> FindPreservedGameFolders(IEnumerable<string> driveRoots)
     {
         var preserved = new List<string>();
         try
         {
-            foreach (var drive in DriveInfo.GetDrives())
+            foreach (var driveRoot in driveRoots)
             {
-                if (!drive.IsReady) continue;
                 string[] rootDirs;
-                try { rootDirs = Directory.GetDirectories(drive.RootDirectory.FullName); }
+                try { rootDirs = Directory.GetDirectories(driveRoot); }
                 catch { continue; }
 
                 foreach (var dir in rootDirs)
@@ -138,12 +139,12 @@ public static class SteamLibraries
         AddLib(FindSteamPath());
 
         // 2. 각 드라이브의 기본 Steam 설치 위치 및 흔한 라이브러리 위치
+        // 드라이브 목록은 한 번만 읽는다. 잠든 외장·네트워크 드라이브는 IsReady 확인만으로도 오래 걸린다.
+        var driveRoots = ReadyDriveRoots();
         try
         {
-            foreach (var drive in DriveInfo.GetDrives())
+            foreach (var root in driveRoots)
             {
-                if (!drive.IsReady) continue;
-                var root = drive.RootDirectory.FullName;
                 AddLib(Path.Combine(root, "Program Files (x86)", "Steam"));
                 AddLib(Path.Combine(root, "Program Files", "Steam"));
                 AddLib(Path.Combine(root, "Steam"));
@@ -190,21 +191,41 @@ public static class SteamLibraries
 
         // 4. 각 라이브러리에서 실제로 존재하는 common 폴더만 반환
         var results = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var lib in libs)
         {
             var common = Path.Combine(lib, "steamapps", "common");
-            if (Directory.Exists(common) && !results.Any(x => string.Equals(x, common, StringComparison.OrdinalIgnoreCase)))
+            if (Directory.Exists(common) && seen.Add(common))
                 results.Add(common);
         }
 
         // 5. Steam 외부에 보존된 독립 Unity 게임 폴더들도 함께 반환
-        foreach (var preserved in FindPreservedGameFolders())
+        foreach (var preserved in FindPreservedGameFolders(driveRoots))
         {
-            if (!results.Any(x => string.Equals(x, preserved, StringComparison.OrdinalIgnoreCase)))
+            if (seen.Add(preserved))
                 results.Add(preserved);
         }
 
         return results;
+    }
+
+    /// <summary>준비된(마운트된) 드라이브의 루트 경로들. 읽지 못하면 빈 목록.</summary>
+    private static List<string> ReadyDriveRoots()
+    {
+        var roots = new List<string>();
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (drive.IsReady) roots.Add(drive.RootDirectory.FullName);
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return roots;
     }
 
     /// <summary>
@@ -267,4 +288,3 @@ public static class SteamLibraries
         return results;
     }
 }
-
